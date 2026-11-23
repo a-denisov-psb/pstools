@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
-# GUI page of the tool "DHCP Debug Server". Runs inside its own dynamic module (see CLAUDE.md):
+# GUI page of the tool "DHCP Server". Runs inside its own dynamic module (see CLAUDE.md):
 # $script: variables are private to this page.
 
 $ResultColumns    = @('Time', 'State', 'IPAddress', 'MacAddress', 'HostName', 'Vendor', 'VendorClass', 'LeaseExpires', 'Message')
-$FirewallRuleName = 'PSTools DHCP Debug Server'
+$FirewallRuleName = 'PSTools DHCP Server'
 
 function Initialize-ToolPage {
     <#
@@ -184,7 +184,7 @@ function Update-AddressNotice {
     }
     elseif ($address.PrefixOrigin -eq 'Dhcp') {
         $text = ("Adapter '{0}' got its address {1} from a DHCP server, so there is already a DHCP server on this network and " +
-                 "the DHCP Debug Server will not start here. Use a separate network (e.g. a direct cable to the device) with a static address.") -f
+                 "the DHCP Server will not start here. Use a separate network (e.g. a direct cable to the device) with a static address.") -f
                 $alias, $address.IPAddress
     }
     elseif ($address.PrefixOrigin -eq 'WellKnown') {

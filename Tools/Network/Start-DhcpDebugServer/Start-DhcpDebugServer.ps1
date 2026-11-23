@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Logic of the tool "DHCP Debug Server". Dot-source this file to use the function from the console:
+# Logic of the tool "DHCP Server". Dot-source this file to use the function from the console:
 #   . .\Tools\Network\Start-DhcpDebugServer\Start-DhcpDebugServer.ps1
 #   Start-DhcpDebugServer -InterfaceAlias 'Ethernet' -Verbose        (stop with Ctrl+C)
 
@@ -25,7 +25,7 @@ function Start-DhcpDebugServer {
       - The adapter needs a static IPv4 address in the subnet of the pool, e.g.
             netsh interface ipv4 set address "<Name>" static 192.168.100.1 255.255.255.0
       - The Windows Firewall must allow inbound UDP port 67 (needs administrator rights once):
-            New-NetFirewallRule -DisplayName 'PSTools DHCP Debug Server' -Direction Inbound -Protocol UDP -LocalPort 67 -Action Allow
+            New-NetFirewallRule -DisplayName 'PSTools DHCP Server' -Direction Inbound -Protocol UDP -LocalPort 67 -Action Allow
       - No other DHCP server on this PC may use port 67 on that address (Internet Connection Sharing,
         Hyper-V Default Switch).
 
@@ -80,7 +80,7 @@ function Start-DhcpDebugServer {
 
     .NOTES
     Never run this on a production network. Remove the firewall rule when it is no longer needed:
-        Remove-NetFirewallRule -DisplayName 'PSTools DHCP Debug Server'
+        Remove-NetFirewallRule -DisplayName 'PSTools DHCP Server'
     #>
     [CmdletBinding()]
     [OutputType('PSTools.DhcpLease')]
