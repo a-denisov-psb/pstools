@@ -164,6 +164,11 @@ function Get-PSToolsNetworkAdapter {
     Bluetooth adapters as well as disconnected adapters can be included with the switches.
     Results are sorted: adapters with an APIPA address first, then connected ones, then by name.
 
+    Hyper-V external switches: the physical NIC is bound to the switch and has no IP address; the host uses
+    'vEthernet (<switch>)', which carries the MAC address of that NIC. Such vEthernet adapters count as
+    physical (IsVirtual = $false, UplinkAdapter = name of the NIC), and the NIC itself reports the vEthernet
+    adapter in HyperVSwitchAdapter.
+
     .PARAMETER IncludeVirtual
     Also return virtual / tunnel / VM / Bluetooth adapters.
 
@@ -187,8 +192,34 @@ function Get-PSToolsNetworkAdapter {
     $ipAddresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue -Verbose:$false)
     $adapters    = @(Get-NetAdapter -ErrorAction SilentlyContinue -Verbose:$false)
 
+    # Hyper-V external switches: map 'vEthernet (...)' to the physical NIC with the same MAC address. Several NICs
+    # can share a MAC (docking station MAC pass-through); then the NIC bound to the switch (vms_pp) wins.
+    $physical    = @($adapters | Where-Object { $_.MacAddress -and -not (Test-PSToolsVirtualAdapter -Adapter $_) })
+    $uplinkOf    = @{}   # ifIndex of vEthernet adapter -> name of the physical NIC
+    $switchOf    = @{}   # name of the physical NIC     -> name of the vEthernet adapter
+    $switchBound = $null
+    foreach ($vnic in $adapters | Where-Object { $_.MacAddress -and $_.InterfaceDescription -like 'Hyper-V Virtual Ethernet Adapter*' }) {
+        $candidates = @($physical | Where-Object { $_.MacAddress -eq $vnic.MacAddress })
+        if ($candidates.Count -gt 1) {
+            if ($null -eq $switchBound) {
+                # CIM is much faster than Get-NetAdapterBinding; only queried when needed.
+                $switchBound = @(Get-CimInstance -Namespace root/StandardCimv2 -ClassName MSFT_NetAdapterBindingSettingData `
+                    -Filter "ComponentID='vms_pp' AND Enabled=TRUE" -ErrorAction SilentlyContinue -Verbose:$false |
+                    ForEach-Object { $_.Name })
+            }
+            $bound = @($candidates | Where-Object { $switchBound -contains $_.Name })
+            if ($bound.Count) { $candidates = $bound }
+        }
+        if ($candidates.Count) {
+            $uplinkOf[[int]$vnic.ifIndex] = $candidates[0].Name
+            $switchOf[$candidates[0].Name] = $vnic.Name
+        }
+    }
+
     $result = foreach ($adapter in $adapters) {
-        $isVirtual = Test-PSToolsVirtualAdapter -Adapter $adapter
+        $uplink    = $uplinkOf[[int]$adapter.ifIndex]
+        $switchName = $switchOf[$adapter.Name]
+        $isVirtual = (-not $uplink) -and (Test-PSToolsVirtualAdapter -Adapter $adapter)
         if ($isVirtual -and -not $IncludeVirtual) { continue }
         if ($adapter.Status -ne 'Up' -and -not $IncludeDisconnected) { continue }
 
@@ -197,19 +228,22 @@ function Get-PSToolsNetworkAdapter {
         $apipa = $ipv4 | Where-Object { Test-PSToolsApipaAddress $_ } | Select-Object -First 1
         if ($ApipaOnly -and -not $apipa) { continue }
 
-        $addressText = if ($ipv4.Count) { $ipv4 -join ', ' } else { 'no IPv4' }
+        $addressText = if ($ipv4.Count) { $ipv4 -join ', ' } elseif ($switchName) { "no IPv4 (bound to Hyper-V switch, use '$switchName')" } else { 'no IPv4' }
+        $descriptionText = if ($uplink) { "Hyper-V external switch on '$uplink'" } else { $adapter.InterfaceDescription }
         [pscustomobject]@{
-            PSTypeName     = 'PSTools.NetworkAdapter'
-            InterfaceAlias = $adapter.Name
-            InterfaceIndex = [int]$adapter.ifIndex
-            Description    = $adapter.InterfaceDescription
-            Status         = [string]$adapter.Status
-            MacAddress     = ConvertTo-PSToolsMacAddress $adapter.MacAddress
-            LinkSpeed      = $adapter.LinkSpeed
-            IPv4Address    = $ipv4
-            ApipaAddress   = $apipa
-            IsVirtual      = $isVirtual
-            DisplayName    = '{0}  –  {1}  [{2}]  {3}' -f $adapter.Name, $addressText, $adapter.Status, $adapter.InterfaceDescription
+            PSTypeName          = 'PSTools.NetworkAdapter'
+            InterfaceAlias      = $adapter.Name
+            InterfaceIndex      = [int]$adapter.ifIndex
+            Description         = $adapter.InterfaceDescription
+            Status              = [string]$adapter.Status
+            MacAddress          = ConvertTo-PSToolsMacAddress $adapter.MacAddress
+            LinkSpeed           = $adapter.LinkSpeed
+            IPv4Address         = $ipv4
+            ApipaAddress        = $apipa
+            IsVirtual           = $isVirtual
+            UplinkAdapter       = $uplink
+            HyperVSwitchAdapter = $switchName
+            DisplayName         = '{0}  –  {1}  [{2}]  {3}' -f $adapter.Name, $addressText, $adapter.Status, $descriptionText
         }
     }
 
@@ -384,6 +418,149 @@ function Add-PSToolsApipaAddress {
         $output = & "$env:SystemRoot\System32\netsh.exe" interface ipv4 add address "$InterfaceAlias" $IPAddress 255.255.0.0 2>&1
         if ($LASTEXITCODE -ne 0) { throw "netsh failed (exit code $LASTEXITCODE): $($output -join ' ')" }
         return ($output -join [Environment]::NewLine).Trim()
+    }
+}
+
+#endregion
+
+#region Static address helpers
+
+function Get-PSToolsStaticAddressCommand {
+    <#
+    .SYNOPSIS
+    Returns the netsh command that sets a static IPv4 address on an adapter (replaces DHCP),
+    or with -Dhcp the command that switches the adapter back to DHCP.
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Static')]
+    [OutputType([string])]
+    param(
+        [string]$InterfaceAlias = '<Name>',
+        [Parameter(ParameterSetName = 'Static')][string]$IPAddress = '192.168.100.1',
+        [Parameter(ParameterSetName = 'Static')][string]$SubnetMask = '255.255.255.0',
+        [Parameter(Mandatory, ParameterSetName = 'Dhcp')][switch]$Dhcp
+    )
+    if ($Dhcp) { return ('netsh interface ipv4 set address name="{0}" dhcp' -f $InterfaceAlias) }
+    return ('netsh interface ipv4 set address name="{0}" static {1} {2}' -f $InterfaceAlias, $IPAddress, $SubnetMask)
+}
+
+function Set-PSToolsStaticAddress {
+    <#
+    .SYNOPSIS
+    Sets a static IPv4 address on an adapter via netsh (DHCP is disabled for this adapter). Requires administrator rights.
+
+    .DESCRIPTION
+    Revert with: netsh interface ipv4 set address name="<Name>" dhcp
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$InterfaceAlias,
+        [string]$IPAddress = '192.168.100.1',
+        [string]$SubnetMask = '255.255.255.0'
+    )
+
+    if (-not (Test-PSToolsIsAdmin)) { throw 'Setting a static IP address requires administrator rights.' }
+    if ($PSCmdlet.ShouldProcess($InterfaceAlias, "Set static IPv4 address $IPAddress $SubnetMask")) {
+        $output = & "$env:SystemRoot\System32\netsh.exe" interface ipv4 set address "$InterfaceAlias" static $IPAddress $SubnetMask 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "netsh failed (exit code $LASTEXITCODE): $($output -join ' ')" }
+        return ($output -join [Environment]::NewLine).Trim()
+    }
+}
+
+#endregion
+
+#region Windows Firewall
+
+function Test-PSToolsFirewallPortOpen {
+    <#
+    .SYNOPSIS
+    Returns $true if the Windows Firewall lets unsolicited inbound traffic reach a local port.
+
+    .DESCRIPTION
+    Uses the firewall COM API (HNetCfg.FwPolicy2), which is fast and works without administrator rights.
+    The port counts as open if the firewall is disabled for all active profiles, or if an enabled inbound
+    allow rule for an active profile matches the protocol and either names the port ('67', '60-70') or allows
+    any port for the given program. Rules with neither port nor program are ignored (app container rules).
+    Block rules and group policy details are not evaluated, so treat the result as a hint.
+
+    .PARAMETER ApplicationPath
+    Program that listens on the port. Rules restricted to this program count as matching. Default: this PowerShell.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][ValidateSet('TCP', 'UDP')][string]$Protocol,
+        [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$LocalPort,
+        [string]$ApplicationPath = (Get-Process -Id $PID).Path
+    )
+
+    $policy = New-Object -ComObject HNetCfg.FwPolicy2
+    $activeProfiles = [int]$policy.CurrentProfileTypes
+    $enabledForActive = $false
+    foreach ($profileType in 1, 2, 4) {
+        if (($activeProfiles -band $profileType) -and $policy.FirewallEnabled($profileType)) { $enabledForActive = $true }
+    }
+    if (-not $enabledForActive) { return $true }
+
+    $protocolNumber = if ($Protocol -eq 'TCP') { 6 } else { 17 }
+    foreach ($rule in $policy.Rules) {
+        # Direction 1 = inbound, Action 1 = allow, Protocol 256 = any
+        if (-not $rule.Enabled -or $rule.Direction -ne 1 -or $rule.Action -ne 1) { continue }
+        if ($rule.Protocol -ne $protocolNumber -and $rule.Protocol -ne 256) { continue }
+        if (-not ($rule.Profiles -band $activeProfiles)) { continue }
+        if ($rule.ApplicationName -and $rule.ApplicationName -ne $ApplicationPath) { continue }
+
+        $ports = [string]$rule.LocalPorts
+        if (-not $ports -or $ports -eq '*') {
+            # Rules without program and port are app container rules (Store apps): the COM API does not show
+            # their package binding, so only count "any port" rules that name our program.
+            if ($rule.ApplicationName) { return $true }
+            continue
+        }
+        foreach ($part in $ports.Split(',')) {
+            $part = $part.Trim()
+            if ($part -match '^(\d+)-(\d+)$') {
+                if ($LocalPort -ge [int]$Matches[1] -and $LocalPort -le [int]$Matches[2]) { return $true }
+            }
+            elseif ($part -eq [string]$LocalPort) { return $true }
+        }
+    }
+    return $false
+}
+
+function Get-PSToolsFirewallRuleCommand {
+    <#
+    .SYNOPSIS
+    Returns the PowerShell command that adds an inbound allow rule for a local port.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$DisplayName,
+        [Parameter(Mandatory)][ValidateSet('TCP', 'UDP')][string]$Protocol,
+        [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$LocalPort
+    )
+    return ("New-NetFirewallRule -DisplayName '{0}' -Direction Inbound -Protocol {1} -LocalPort {2} -Action Allow" -f $DisplayName, $Protocol, $LocalPort)
+}
+
+function Add-PSToolsFirewallRule {
+    <#
+    .SYNOPSIS
+    Adds an inbound allow rule for a local port (all profiles). Requires administrator rights.
+
+    .DESCRIPTION
+    Remove the rule later with: Remove-NetFirewallRule -DisplayName '<DisplayName>'
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$DisplayName,
+        [Parameter(Mandatory)][ValidateSet('TCP', 'UDP')][string]$Protocol,
+        [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$LocalPort
+    )
+
+    if (-not (Test-PSToolsIsAdmin)) { throw 'Adding a firewall rule requires administrator rights.' }
+    if ($PSCmdlet.ShouldProcess($DisplayName, "Allow inbound $Protocol port $LocalPort")) {
+        New-NetFirewallRule -DisplayName $DisplayName -Direction Inbound -Protocol $Protocol -LocalPort $LocalPort `
+            -Action Allow -Profile Any -Verbose:$false | Out-Null
     }
 }
 
