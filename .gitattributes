@@ -1,0 +1,6 @@
+# Normalize line endings in the repository (LF); Windows checkouts get CRLF via core.autocrlf.
+* text=auto
+
+# Batch files must have CRLF, otherwise labels and goto can break.
+*.cmd text eol=crlf
+*.bat text eol=crlf

@@ -122,9 +122,52 @@ Pick the control that fits each option:
 - Net* cmdlets autoload modules and their script properties import helper modules; with Verbose enabled this
   floods the log. `Core/Network.ps1` imports NetTCPIP/NetAdapter quietly; pass `-Verbose:$false` to Net* calls.
 - Use `[long]` for IPv4 arithmetic (UInt32 silently overflows into other types).
+- Hex literals are Int32: `0xFFFFFFFF` is `-1`, even as `[long]0xFFFFFFFF`. Write `[long]4294967295`
+  (and `[long]4294967040` instead of `0xFFFFFF00`).
 
 ## Error handling
 
 - Logic: `throw` for invalid input / unrecoverable errors, `Write-Warning` for recoverable notices.
 - GUI: errors from jobs are shown in the status text / log, never as unhandled exceptions.
 - A tool that fails to load must not break the main window – it shows its error in its own page.
+
+## Git workflow (git flow)
+
+Development follows **git flow**. The repository is configured for it (`gitflow.*` in `.git/config`):
+
+| Branch | Purpose |
+|---|---|
+| `main` | Released versions only. Every commit on `main` is a merge from `release/*` or `hotfix/*` and is tagged. |
+| `develop` | Integration branch; finished features are merged here. |
+| `feature/<name>` | New tools, changes, refactorings, docs. Branched from `develop`, merged back into `develop`. |
+| `release/<version>` | Release preparation (version bump, last fixes). From `develop`, merged into `main` **and** `develop`. |
+| `hotfix/<version>` | Urgent fix of a released version. From `main`, merged into `main` **and** `develop`. |
+
+Rules:
+- **Never commit directly on `main` or `develop`** – every change, however small, starts on a `feature/*`
+  branch (or `hotfix/*` for a released bug). Branch names: short, English, kebab-case
+  (e.g. `feature/dhcp-debug-server`, `hotfix/0.1.1`).
+- Merges into `develop`/`main` always use `--no-ff`, so every feature stays visible as one unit.
+- **Claude finishes a feature (merge into `develop`) only after the user has tested it or asks for it.**
+  Release and hotfix merges into `main` and tags only on the user's explicit request. Push only on request.
+- Before finishing, bring a long-running feature up to date with `git merge develop`.
+- Versions: SemVer `MAJOR.MINOR.PATCH`. `$AppVersion` in `PSTools.ps1` is the toolbox version; the tag on
+  `main` is that version **without prefix** (`0.2.0`, not `v0.2.0`). Bump `Version` in a tool's `tool.psd1`
+  when that tool changes (in the feature branch).
+- Commit messages in English, imperative mood ("Add DHCP debug server"), with a short body for non-trivial changes.
+
+The `git flow` command may not be installed; plain git equivalents:
+
+```powershell
+# feature
+git switch -c feature/<name> develop
+git switch develop; git merge --no-ff feature/<name>; git branch -d feature/<name>
+# release
+git switch -c release/<version> develop        # bump $AppVersion, commit
+git switch main; git merge --no-ff release/<version>; git tag -a <version> -m "PSTools <version>"
+git switch develop; git merge --no-ff release/<version>; git branch -d release/<version>
+# hotfix
+git switch -c hotfix/<version> main            # fix, bump patch version, commit
+git switch main; git merge --no-ff hotfix/<version>; git tag -a <version> -m "PSTools <version>"
+git switch develop; git merge --no-ff hotfix/<version>; git branch -d hotfix/<version>
+```
