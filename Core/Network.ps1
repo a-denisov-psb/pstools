@@ -565,3 +565,49 @@ function Add-PSToolsFirewallRule {
 }
 
 #endregion
+
+#region Ports
+
+function ConvertTo-PSToolsPortList {
+    <#
+    .SYNOPSIS
+    Parses a port list like '80, 443, 8000-8010' into a sorted list of unique port numbers.
+
+    .DESCRIPTION
+    Accepts single ports and ranges separated by commas, semicolons or blanks. Throws a readable
+    message on invalid input or when the list would contain more than MaxCount ports.
+
+    .EXAMPLE
+    ConvertTo-PSToolsPortList -Text '22, 80, 8000-8002'
+    Returns 22, 80, 8000, 8001, 8002.
+    #>
+    [CmdletBinding()]
+    [OutputType([int[]])]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [ValidateRange(1, 65535)][int]$MaxCount = 1024
+    )
+
+    $tokens = @($Text -split '[,;\s]+' | Where-Object { $_ })
+    if (-not $tokens.Count) { throw 'Enter at least one port (1-65535), e.g. 443 or 80,443 or 8000-8010.' }
+
+    $ports = New-Object 'System.Collections.Generic.SortedSet[int]'
+    foreach ($token in $tokens) {
+        if ($token -notmatch '^(\d{1,5})(?:-(\d{1,5}))?$') {
+            throw "Invalid port '$token'. Use single ports or ranges, e.g. 80,443 or 8000-8010."
+        }
+        $first = [int]$Matches[1]
+        $last  = if ($Matches[2]) { [int]$Matches[2] } else { $first }
+        if ($first -lt 1 -or $first -gt 65535 -or $last -lt 1 -or $last -gt 65535) {
+            throw "Invalid port '$token'. Ports must be between 1 and 65535."
+        }
+        if ($last -lt $first) { throw "Invalid port range '$token': the end is smaller than the start." }
+        if (($last - $first + 1) + $ports.Count -gt $MaxCount) {
+            throw "Too many ports: at most $MaxCount ports can be checked at once."
+        }
+        for ($port = $first; $port -le $last; $port++) { [void]$ports.Add($port) }
+    }
+    return ,([int[]]@($ports))
+}
+
+#endregion

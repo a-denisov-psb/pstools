@@ -12,6 +12,9 @@ Copy the folder, double-click `Start-PSTools.cmd`, done. No installation, no mod
 - Tools must work without admin rights where possible. Actions that need admin are disabled
   (with a tooltip) when not elevated; the status bar offers "Restart as administrator".
 - No network requests at runtime unless that is the tool's explicit purpose (e.g. data is shipped in `Data/`).
+- Data a tool remembers (history, last inputs) goes to `UserData/` via `Get-PSToolsUserData` /
+  `Save-PSToolsUserData`, never into the tool folder or the registry. Saving can fail (read-only share):
+  catch it, keep the data in memory and log one warning.
 
 ## File encoding
 
@@ -32,12 +35,14 @@ PSTools/
 ├── Start-PSTools.cmd          # launcher (Bypass, STA, hidden console)
 ├── PSTools.ps1                # main window: discovers and hosts tools
 ├── Core/
-│   ├── Core.ps1               # loads all non-GUI helpers (Common, Network, Oui)
+│   ├── Core.ps1               # loads all non-GUI helpers (Common, Network, Oui, Storage)
 │   ├── Common.ps1             # tool discovery, admin check, misc helpers
 │   ├── Network.ps1            # adapters, ARP/neighbor table, IPv4/CIDR math
 │   ├── Oui.ps1                # offline MAC vendor lookup (Data/oui.txt)
+│   ├── Storage.ps1            # local user data as JSON in UserData/ (history, settings)
 │   └── Gui.ps1                # XAML loading, background jobs, dialogs (GUI only)
 ├── Data/                      # shipped data files + their update scripts
+├── UserData/                  # created at runtime, per installation; not in git (.gitignore)
 └── Tools/
     └── <Category>/
         ├── category.psd1      # optional: @{ Name = 'Network'; Order = 10 }
