@@ -388,3 +388,146 @@ function Add-PSToolsApipaAddress {
 }
 
 #endregion
+
+#region Static address helpers
+
+function Get-PSToolsStaticAddressCommand {
+    <#
+    .SYNOPSIS
+    Returns the netsh command that sets a static IPv4 address on an adapter (replaces DHCP),
+    or with -Dhcp the command that switches the adapter back to DHCP.
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Static')]
+    [OutputType([string])]
+    param(
+        [string]$InterfaceAlias = '<Name>',
+        [Parameter(ParameterSetName = 'Static')][string]$IPAddress = '192.168.100.1',
+        [Parameter(ParameterSetName = 'Static')][string]$SubnetMask = '255.255.255.0',
+        [Parameter(Mandatory, ParameterSetName = 'Dhcp')][switch]$Dhcp
+    )
+    if ($Dhcp) { return ('netsh interface ipv4 set address name="{0}" dhcp' -f $InterfaceAlias) }
+    return ('netsh interface ipv4 set address name="{0}" static {1} {2}' -f $InterfaceAlias, $IPAddress, $SubnetMask)
+}
+
+function Set-PSToolsStaticAddress {
+    <#
+    .SYNOPSIS
+    Sets a static IPv4 address on an adapter via netsh (DHCP is disabled for this adapter). Requires administrator rights.
+
+    .DESCRIPTION
+    Revert with: netsh interface ipv4 set address name="<Name>" dhcp
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$InterfaceAlias,
+        [string]$IPAddress = '192.168.100.1',
+        [string]$SubnetMask = '255.255.255.0'
+    )
+
+    if (-not (Test-PSToolsIsAdmin)) { throw 'Setting a static IP address requires administrator rights.' }
+    if ($PSCmdlet.ShouldProcess($InterfaceAlias, "Set static IPv4 address $IPAddress $SubnetMask")) {
+        $output = & "$env:SystemRoot\System32\netsh.exe" interface ipv4 set address "$InterfaceAlias" static $IPAddress $SubnetMask 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "netsh failed (exit code $LASTEXITCODE): $($output -join ' ')" }
+        return ($output -join [Environment]::NewLine).Trim()
+    }
+}
+
+#endregion
+
+#region Windows Firewall
+
+function Test-PSToolsFirewallPortOpen {
+    <#
+    .SYNOPSIS
+    Returns $true if the Windows Firewall lets unsolicited inbound traffic reach a local port.
+
+    .DESCRIPTION
+    Uses the firewall COM API (HNetCfg.FwPolicy2), which is fast and works without administrator rights.
+    The port counts as open if the firewall is disabled for all active profiles, or if an enabled inbound
+    allow rule for an active profile matches the protocol and either names the port ('67', '60-70') or allows
+    any port for the given program. Rules with neither port nor program are ignored (app container rules).
+    Block rules and group policy details are not evaluated, so treat the result as a hint.
+
+    .PARAMETER ApplicationPath
+    Program that listens on the port. Rules restricted to this program count as matching. Default: this PowerShell.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][ValidateSet('TCP', 'UDP')][string]$Protocol,
+        [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$LocalPort,
+        [string]$ApplicationPath = (Get-Process -Id $PID).Path
+    )
+
+    $policy = New-Object -ComObject HNetCfg.FwPolicy2
+    $activeProfiles = [int]$policy.CurrentProfileTypes
+    $enabledForActive = $false
+    foreach ($profileType in 1, 2, 4) {
+        if (($activeProfiles -band $profileType) -and $policy.FirewallEnabled($profileType)) { $enabledForActive = $true }
+    }
+    if (-not $enabledForActive) { return $true }
+
+    $protocolNumber = if ($Protocol -eq 'TCP') { 6 } else { 17 }
+    foreach ($rule in $policy.Rules) {
+        # Direction 1 = inbound, Action 1 = allow, Protocol 256 = any
+        if (-not $rule.Enabled -or $rule.Direction -ne 1 -or $rule.Action -ne 1) { continue }
+        if ($rule.Protocol -ne $protocolNumber -and $rule.Protocol -ne 256) { continue }
+        if (-not ($rule.Profiles -band $activeProfiles)) { continue }
+        if ($rule.ApplicationName -and $rule.ApplicationName -ne $ApplicationPath) { continue }
+
+        $ports = [string]$rule.LocalPorts
+        if (-not $ports -or $ports -eq '*') {
+            # Rules without program and port are app container rules (Store apps): the COM API does not show
+            # their package binding, so only count "any port" rules that name our program.
+            if ($rule.ApplicationName) { return $true }
+            continue
+        }
+        foreach ($part in $ports.Split(',')) {
+            $part = $part.Trim()
+            if ($part -match '^(\d+)-(\d+)$') {
+                if ($LocalPort -ge [int]$Matches[1] -and $LocalPort -le [int]$Matches[2]) { return $true }
+            }
+            elseif ($part -eq [string]$LocalPort) { return $true }
+        }
+    }
+    return $false
+}
+
+function Get-PSToolsFirewallRuleCommand {
+    <#
+    .SYNOPSIS
+    Returns the PowerShell command that adds an inbound allow rule for a local port.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$DisplayName,
+        [Parameter(Mandatory)][ValidateSet('TCP', 'UDP')][string]$Protocol,
+        [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$LocalPort
+    )
+    return ("New-NetFirewallRule -DisplayName '{0}' -Direction Inbound -Protocol {1} -LocalPort {2} -Action Allow" -f $DisplayName, $Protocol, $LocalPort)
+}
+
+function Add-PSToolsFirewallRule {
+    <#
+    .SYNOPSIS
+    Adds an inbound allow rule for a local port (all profiles). Requires administrator rights.
+
+    .DESCRIPTION
+    Remove the rule later with: Remove-NetFirewallRule -DisplayName '<DisplayName>'
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][string]$DisplayName,
+        [Parameter(Mandatory)][ValidateSet('TCP', 'UDP')][string]$Protocol,
+        [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$LocalPort
+    )
+
+    if (-not (Test-PSToolsIsAdmin)) { throw 'Adding a firewall rule requires administrator rights.' }
+    if ($PSCmdlet.ShouldProcess($DisplayName, "Allow inbound $Protocol port $LocalPort")) {
+        New-NetFirewallRule -DisplayName $DisplayName -Direction Inbound -Protocol $Protocol -LocalPort $LocalPort `
+            -Action Allow -Profile Any -Verbose:$false | Out-Null
+    }
+}
+
+#endregion
