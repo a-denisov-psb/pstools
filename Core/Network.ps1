@@ -164,6 +164,11 @@ function Get-PSToolsNetworkAdapter {
     Bluetooth adapters as well as disconnected adapters can be included with the switches.
     Results are sorted: adapters with an APIPA address first, then connected ones, then by name.
 
+    Hyper-V external switches: the physical NIC is bound to the switch and has no IP address; the host uses
+    'vEthernet (<switch>)', which carries the MAC address of that NIC. Such vEthernet adapters count as
+    physical (IsVirtual = $false, UplinkAdapter = name of the NIC), and the NIC itself reports the vEthernet
+    adapter in HyperVSwitchAdapter.
+
     .PARAMETER IncludeVirtual
     Also return virtual / tunnel / VM / Bluetooth adapters.
 
@@ -187,8 +192,34 @@ function Get-PSToolsNetworkAdapter {
     $ipAddresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue -Verbose:$false)
     $adapters    = @(Get-NetAdapter -ErrorAction SilentlyContinue -Verbose:$false)
 
+    # Hyper-V external switches: map 'vEthernet (...)' to the physical NIC with the same MAC address. Several NICs
+    # can share a MAC (docking station MAC pass-through); then the NIC bound to the switch (vms_pp) wins.
+    $physical    = @($adapters | Where-Object { $_.MacAddress -and -not (Test-PSToolsVirtualAdapter -Adapter $_) })
+    $uplinkOf    = @{}   # ifIndex of vEthernet adapter -> name of the physical NIC
+    $switchOf    = @{}   # name of the physical NIC     -> name of the vEthernet adapter
+    $switchBound = $null
+    foreach ($vnic in $adapters | Where-Object { $_.MacAddress -and $_.InterfaceDescription -like 'Hyper-V Virtual Ethernet Adapter*' }) {
+        $candidates = @($physical | Where-Object { $_.MacAddress -eq $vnic.MacAddress })
+        if ($candidates.Count -gt 1) {
+            if ($null -eq $switchBound) {
+                # CIM is much faster than Get-NetAdapterBinding; only queried when needed.
+                $switchBound = @(Get-CimInstance -Namespace root/StandardCimv2 -ClassName MSFT_NetAdapterBindingSettingData `
+                    -Filter "ComponentID='vms_pp' AND Enabled=TRUE" -ErrorAction SilentlyContinue -Verbose:$false |
+                    ForEach-Object { $_.Name })
+            }
+            $bound = @($candidates | Where-Object { $switchBound -contains $_.Name })
+            if ($bound.Count) { $candidates = $bound }
+        }
+        if ($candidates.Count) {
+            $uplinkOf[[int]$vnic.ifIndex] = $candidates[0].Name
+            $switchOf[$candidates[0].Name] = $vnic.Name
+        }
+    }
+
     $result = foreach ($adapter in $adapters) {
-        $isVirtual = Test-PSToolsVirtualAdapter -Adapter $adapter
+        $uplink    = $uplinkOf[[int]$adapter.ifIndex]
+        $switchName = $switchOf[$adapter.Name]
+        $isVirtual = (-not $uplink) -and (Test-PSToolsVirtualAdapter -Adapter $adapter)
         if ($isVirtual -and -not $IncludeVirtual) { continue }
         if ($adapter.Status -ne 'Up' -and -not $IncludeDisconnected) { continue }
 
@@ -197,19 +228,22 @@ function Get-PSToolsNetworkAdapter {
         $apipa = $ipv4 | Where-Object { Test-PSToolsApipaAddress $_ } | Select-Object -First 1
         if ($ApipaOnly -and -not $apipa) { continue }
 
-        $addressText = if ($ipv4.Count) { $ipv4 -join ', ' } else { 'no IPv4' }
+        $addressText = if ($ipv4.Count) { $ipv4 -join ', ' } elseif ($switchName) { "no IPv4 (bound to Hyper-V switch, use '$switchName')" } else { 'no IPv4' }
+        $descriptionText = if ($uplink) { "Hyper-V external switch on '$uplink'" } else { $adapter.InterfaceDescription }
         [pscustomobject]@{
-            PSTypeName     = 'PSTools.NetworkAdapter'
-            InterfaceAlias = $adapter.Name
-            InterfaceIndex = [int]$adapter.ifIndex
-            Description    = $adapter.InterfaceDescription
-            Status         = [string]$adapter.Status
-            MacAddress     = ConvertTo-PSToolsMacAddress $adapter.MacAddress
-            LinkSpeed      = $adapter.LinkSpeed
-            IPv4Address    = $ipv4
-            ApipaAddress   = $apipa
-            IsVirtual      = $isVirtual
-            DisplayName    = '{0}  –  {1}  [{2}]  {3}' -f $adapter.Name, $addressText, $adapter.Status, $adapter.InterfaceDescription
+            PSTypeName          = 'PSTools.NetworkAdapter'
+            InterfaceAlias      = $adapter.Name
+            InterfaceIndex      = [int]$adapter.ifIndex
+            Description         = $adapter.InterfaceDescription
+            Status              = [string]$adapter.Status
+            MacAddress          = ConvertTo-PSToolsMacAddress $adapter.MacAddress
+            LinkSpeed           = $adapter.LinkSpeed
+            IPv4Address         = $ipv4
+            ApipaAddress        = $apipa
+            IsVirtual           = $isVirtual
+            UplinkAdapter       = $uplink
+            HyperVSwitchAdapter = $switchName
+            DisplayName         = '{0}  –  {1}  [{2}]  {3}' -f $adapter.Name, $addressText, $adapter.Status, $descriptionText
         }
     }
 
