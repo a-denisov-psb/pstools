@@ -1,0 +1,161 @@
+<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- notice: address -->
+            <RowDefinition Height="Auto"/>  <!-- notice: firewall -->
+            <RowDefinition Height="Auto"/>  <!-- options -->
+            <RowDefinition Height="Auto"/>  <!-- start / stop / progress -->
+            <RowDefinition Height="*"/>     <!-- leases -->
+            <RowDefinition Height="Auto"/>  <!-- result actions -->
+            <RowDefinition Height="Auto"/>  <!-- log -->
+        </Grid.RowDefinitions>
+
+        <!-- Notice bar: adapter has no static address -->
+        <Border Grid.Row="0" x:Name="bdrAddress" Style="{DynamicResource NoticeBarStyle}" Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock x:Name="txtAddressNotice" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" x:Name="btnSetAddress" Content="Set 192.168.100.1/24" Margin="6,0,0,0"/>
+                    <Button DockPanel.Dock="Right" x:Name="btnCopyAddressCommand" Content="Copy" Margin="6,0,0,0"
+                            ToolTip="Copy the command to the clipboard"/>
+                    <TextBox x:Name="txtAddressCommand" IsReadOnly="True" FontFamily="Consolas"/>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Notice bar: firewall blocks UDP 67 -->
+        <Border Grid.Row="1" x:Name="bdrFirewall" Style="{DynamicResource NoticeBarStyle}" Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock x:Name="txtFirewallNotice" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" x:Name="btnAddFirewallRule" Content="Add rule" Margin="6,0,0,0"/>
+                    <Button DockPanel.Dock="Right" x:Name="btnCopyFirewallCommand" Content="Copy" Margin="6,0,0,0"
+                            ToolTip="Copy the command to the clipboard"/>
+                    <TextBox x:Name="txtFirewallCommand" IsReadOnly="True" FontFamily="Consolas"/>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Options -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <GroupBox Grid.Column="0" Header="Network" Margin="0,0,8,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Label Grid.Row="0" Grid.Column="0" Content="Network adapter:"/>
+                    <DockPanel Grid.Row="0" Grid.Column="1">
+                        <Button DockPanel.Dock="Right" x:Name="btnRefresh" Style="{DynamicResource RefreshButtonStyle}"
+                                ToolTip="Refresh adapters, addresses and the firewall check (e.g. after plugging in a USB network adapter)"/>
+                        <ComboBox x:Name="cmbAdapter" DisplayMemberPath="DisplayName"/>
+                    </DockPanel>
+
+                    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="chkShowAll" Content="Show disconnected adapters"/>
+
+                    <Label Grid.Row="2" Grid.Column="0" Content="Server address:" Margin="0,4,0,0"/>
+                    <ComboBox Grid.Row="2" Grid.Column="1" x:Name="cmbServerAddress" DisplayMemberPath="DisplayName" Margin="0,4,0,0"
+                              ToolTip="IPv4 address of the adapter the server listens on (UDP port 67)"/>
+
+                    <WrapPanel Grid.Row="3" Grid.Column="1" Margin="0,6,0,0">
+                        <CheckBox x:Name="chkServerCheck" Content="Check for another DHCP server first"
+                                  ToolTip="Sends a DHCP DISCOVER before starting and refuses to start if another DHCP server answers (takes 3 s)"/>
+                        <CheckBox x:Name="chkVendor" Content="Resolve vendor (offline OUI table)"/>
+                    </WrapPanel>
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Grid.Column="1" Header="DHCP options">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Label Grid.Row="0" Grid.Column="0" Content="Pool start:"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtPoolStart" ToolTip="First address handed out"/>
+                    <Label Grid.Row="0" Grid.Column="2" Content="Pool end:" Margin="12,0,0,0"/>
+                    <TextBox Grid.Row="0" Grid.Column="3" x:Name="txtPoolEnd" ToolTip="Last address handed out"/>
+
+                    <Label Grid.Row="1" Grid.Column="0" Content="Subnet mask:" Margin="0,4,0,0"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="cmbMask" IsEditable="True" Margin="0,4,0,0"
+                              ToolTip="Subnet mask sent to the clients (default: prefix of the server address)"/>
+                    <Label Grid.Row="1" Grid.Column="2" Content="Lease time (s):" Margin="12,4,0,0"/>
+                    <ComboBox Grid.Row="1" Grid.Column="3" x:Name="cmbLease" IsEditable="True" Margin="0,4,0,0"
+                              ToolTip="60 - 2592000 seconds. Short leases make clients come back often (good for debugging)."/>
+
+                    <Label Grid.Row="2" Grid.Column="0" Content="Gateway:" Margin="0,4,0,0"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="txtRouter" Margin="0,4,0,0"
+                             ToolTip="Optional default gateway (option 3), e.g. the server address"/>
+                    <Label Grid.Row="2" Grid.Column="2" Content="DNS servers:" Margin="12,4,0,0"/>
+                    <TextBox Grid.Row="2" Grid.Column="3" x:Name="txtDns" Margin="0,4,0,0"
+                             ToolTip="Optional DNS servers (option 6), separated by commas"/>
+
+                    <Label Grid.Row="3" Grid.Column="0" Content="Domain name:" Margin="0,4,0,0"/>
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="txtDomain" Margin="0,4,0,0"
+                             ToolTip="Optional DNS domain name (option 15)"/>
+                </Grid>
+            </GroupBox>
+        </Grid>
+
+        <!-- Start / stop / progress -->
+        <StackPanel Grid.Row="3" Margin="0,0,0,8">
+            <DockPanel>
+                <Button x:Name="btnStart" Content="Start server" IsDefault="True" FontWeight="SemiBold"/>
+                <Button x:Name="btnCancel" Content="Stop" IsEnabled="False"/>
+                <ProgressBar x:Name="pbProgress" Minimum="0" Maximum="100" Margin="6,0,0,0"/>
+            </DockPanel>
+            <TextBlock x:Name="txtStatus" Margin="0,4,0,0" Text="Stopped."/>
+        </StackPanel>
+
+        <!-- Leases: one row per client, updated live -->
+        <DataGrid Grid.Row="4" x:Name="dgResults">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Time"          Binding="{Binding Time, StringFormat=HH:mm:ss}"   Width="70"/>
+                <DataGridTextColumn Header="State"         Binding="{Binding State}"        Width="85"/>
+                <DataGridTextColumn Header="IP address"    Binding="{Binding IPAddress}"    Width="115"/>
+                <DataGridTextColumn Header="MAC address"   Binding="{Binding MacAddress}"   Width="135"/>
+                <DataGridTextColumn Header="Host name"     Binding="{Binding HostName}"     Width="120"/>
+                <DataGridTextColumn Header="Vendor"        Binding="{Binding Vendor}"       Width="150"/>
+                <DataGridTextColumn Header="Vendor class"  Binding="{Binding VendorClass}"  Width="110"/>
+                <DataGridTextColumn Header="Lease expires" Binding="{Binding LeaseExpires, StringFormat=HH:mm:ss}" Width="90"/>
+                <DataGridTextColumn Header="Message"       Binding="{Binding Message}"      Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Result actions -->
+        <WrapPanel Grid.Row="5" Margin="0,6,0,0">
+            <Button x:Name="btnCopy" Content="Copy" ToolTip="Copy the selected rows (or all rows) as tab-separated text"/>
+            <Button x:Name="btnExport" Content="Export CSV…"/>
+            <Button x:Name="btnOpenWeb" Content="Open web UI" IsEnabled="False" ToolTip="Open http://&lt;IP&gt; of the selected client"/>
+            <Button x:Name="btnPing" Content="Ping -t" IsEnabled="False" ToolTip="Open a console with a continuous ping to the selected client"/>
+            <Button x:Name="btnClear" Content="Clear" ToolTip="Clear the list (the running server keeps its leases)"/>
+        </WrapPanel>
+
+        <!-- Log -->
+        <Expander Grid.Row="6" x:Name="expLog" Header="Log" Margin="0,8,0,0">
+            <TextBox x:Name="txtLog" Style="{DynamicResource LogBoxStyle}" Height="140" Margin="0,4,0,0"/>
+        </Expander>
+    </Grid>
+</UserControl>
