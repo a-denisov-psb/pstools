@@ -35,9 +35,10 @@ PSTools/
 ├── Start-PSTools.cmd          # launcher (Bypass, STA, hidden console)
 ├── PSTools.ps1                # main window: discovers and hosts tools
 ├── Core/
-│   ├── Core.ps1               # loads all non-GUI helpers (Common, Network, Oui, Storage)
+│   ├── Core.ps1               # loads all non-GUI helpers (Common, Network, Routing, Oui, Storage)
 │   ├── Common.ps1             # tool discovery, admin check, misc helpers
 │   ├── Network.ps1            # adapters, ARP/neighbor table, IPv4/CIDR math
+│   ├── Routing.ps1            # IPv4/IPv6 prefixes, interface metrics, route lookup/changes/checks
 │   ├── Oui.ps1                # offline MAC vendor lookup (Data/oui.txt)
 │   ├── Storage.ps1            # local user data as JSON in UserData/ (history, settings)
 │   └── Gui.ps1                # XAML loading, background jobs, dialogs (GUI only)
@@ -113,8 +114,10 @@ Pick the control that fits each option:
 - Hints/warnings that need user action: a notice bar at the top of the page with the exact command to fix it
   (copyable `TextBox`) and, where possible, a button that does it (disabled without admin rights).
 - Use the shared implicit styles from the main window; do not hard-code colors or fonts in pages.
-  Keyed shared styles (`RefreshButtonStyle`, `NoticeBarStyle`, `LogBoxStyle`) must be referenced with
+  Keyed shared styles (`RefreshButtonStyle`, `NoticeBarStyle`, `LogBoxStyle`) and brushes (`DiffAddedBrush`,
+  `DiffRemovedBrush`, `DiffChangedBrush` for comparison rows) must be referenced with
   `{DynamicResource ...}` – pages are loaded before they are attached to the window, so `StaticResource` fails.
+  Gray hint text: `{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}`.
 - Optional log: `Expander` "Log" at the bottom with a read-only `TextBox` (`LogBoxStyle`); expand it
   automatically on warnings/errors.
 - Every event handler is wrapped in `Invoke-PSToolsUiAction { … }` so errors end up in a message box

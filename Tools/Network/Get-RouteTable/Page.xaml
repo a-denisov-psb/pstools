@@ -1,0 +1,293 @@
+<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- view options -->
+            <RowDefinition Height="Auto"/>  <!-- notices -->
+            <RowDefinition Height="*"/>     <!-- tabs -->
+            <RowDefinition Height="Auto"/>  <!-- status -->
+            <RowDefinition Height="Auto"/>  <!-- log -->
+        </Grid.RowDefinitions>
+
+        <!-- View options -->
+        <GroupBox Grid.Row="0" Header="View">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="btnRefresh" Style="{DynamicResource RefreshButtonStyle}"
+                        ToolTip="Read the route table and the interfaces again"/>
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="rbIPv4" Content="IPv4" GroupName="AddressFamily" VerticalAlignment="Center"/>
+                    <RadioButton x:Name="rbIPv6" Content="IPv6" GroupName="AddressFamily" VerticalAlignment="Center"/>
+                    <CheckBox x:Name="chkSystem" Content="Show system routes" Margin="16,4,16,4"
+                              ToolTip="Multicast, broadcast, loopback, the host routes of this PC's own addresses and IPv6 link-local routes"/>
+                    <Label Content="Filter:" Target="{Binding ElementName=txtFilter}"/>
+                    <TextBox x:Name="txtFilter" Width="200"
+                             ToolTip="Shows only routes whose destination, gateway, interface, origin or store contains all words"/>
+                </StackPanel>
+            </DockPanel>
+        </GroupBox>
+
+        <!-- Notices from the route table check -->
+        <Border Grid.Row="1" x:Name="bdrIssues" Style="{DynamicResource NoticeBarStyle}" Visibility="Collapsed">
+            <ScrollViewer MaxHeight="96" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="icIssues">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,1,0,3">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Symbol}" Width="20"/>
+                                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap"/>
+                                </DockPanel>
+                                <TextBox Text="{Binding Command, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas"
+                                         Margin="20,3,0,0" Visibility="{Binding CommandVisibility}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <TabControl Grid.Row="2" x:Name="tabMain">
+
+            <!-- Routes -->
+            <TabItem Header="Routes">
+                <Grid Margin="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>  <!-- lookup -->
+                        <RowDefinition Height="*"/>     <!-- routes -->
+                        <RowDefinition Height="Auto"/>  <!-- actions -->
+                        <RowDefinition Height="Auto"/>  <!-- editor -->
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,6">
+                        <DockPanel>
+                            <Label DockPanel.Dock="Left" Content="Route lookup:" Target="{Binding ElementName=cmbLookup}"/>
+                            <Button DockPanel.Dock="Right" x:Name="btnLookup" Content="Look up" Margin="6,0,0,0"
+                                    ToolTip="Show which route, interface and source address Windows uses for this destination"/>
+                            <ComboBox x:Name="cmbLookup" IsEditable="True"
+                                      ToolTip="IP address or host name, e.g. 8.8.8.8 or server01. The list contains the last lookups."/>
+                        </DockPanel>
+                        <TextBlock x:Name="txtLookupResult" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
+
+                    <DataGrid Grid.Row="1" x:Name="dgRoutes" MinHeight="90">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Destination"  Binding="{Binding DestinationPrefix}" SortMemberPath="SortKey" Width="2*" MinWidth="110"/>
+                            <DataGridTextColumn Header="Gateway"      Binding="{Binding NextHopDisplay}"    Width="2*" MinWidth="80"/>
+                            <DataGridTextColumn Header="Interface"    Binding="{Binding InterfaceName}"     Width="2*" MinWidth="90"/>
+                            <DataGridTextColumn Header="Metric"       Binding="{Binding RouteMetric}"       Width="SizeToHeader"/>
+                            <DataGridTextColumn Header="If. metric"   Binding="{Binding InterfaceMetric}"   Width="SizeToHeader"/>
+                            <DataGridTextColumn Header="Effective"    Binding="{Binding EffectiveMetric}"   Width="SizeToHeader"/>
+                            <DataGridTextColumn Header="Origin"       Binding="{Binding Origin}"            Width="*" MinWidth="60"/>
+                            <DataGridTextColumn Header="Store"        Binding="{Binding Store}"             Width="1.4*" MinWidth="80"/>
+                            <DataGridTextColumn Header="Kind"         Binding="{Binding Kind}"              Width="*" MinWidth="55"/>
+                            <DataGridTextColumn Header="Lifetime"     Binding="{Binding Lifetime}"          Width="*" MinWidth="55"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <WrapPanel Grid.Row="2" Margin="0,6,0,0">
+                        <Button x:Name="btnCopy" Content="Copy" ToolTip="Copy the selected rows (or all rows) as tab-separated text"/>
+                        <Button x:Name="btnCopyCommand" Content="Copy as command"
+                                ToolTip="Copy commands that create the selected routes (or all shown routes), e.g. for documentation or another PC"/>
+                        <Button x:Name="btnExport" Content="Export CSV…"/>
+                        <Button x:Name="btnDelete" Content="Delete…" IsEnabled="False" ToolTip="Delete the selected routes"/>
+                        <Button x:Name="btnBackup" Content="Backup…" Margin="18,0,6,0"
+                                ToolTip="Save all persistent routes (IPv4 and IPv6) to a file"/>
+                        <Button x:Name="btnRestore" Content="Restore…"
+                                ToolTip="Add the routes from a backup file as persistent routes (on this or another PC)"/>
+                    </WrapPanel>
+
+                    <Expander Grid.Row="3" x:Name="expEditor" Header="New route" IsExpanded="True" Margin="0,8,0,0"
+                              ToolTip="Collapse the form to see more routes">
+                        <Grid Margin="4,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Label Grid.Row="0" Grid.Column="0" Content="Destination:" Target="{Binding ElementName=txtPrefix}"/>
+                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="txtPrefix" FontFamily="Consolas"
+                                     ToolTip="Network/prefix length (10.20.0.0/16), network and mask (10.20.0.0 255.255.0.0), a single address (host route) or 'default'"/>
+                            <Label Grid.Row="0" Grid.Column="2" Content="Gateway:" Margin="12,0,0,0" Target="{Binding ElementName=txtNextHop}"/>
+                            <TextBox Grid.Row="0" Grid.Column="3" x:Name="txtNextHop" FontFamily="Consolas"
+                                     ToolTip="Next router; leave empty for an on-link route (destination directly reachable on the interface). If the selected interface cannot reach the gateway, the matching interface is selected."/>
+                            <Label Grid.Row="0" Grid.Column="4" Content="Metric:" Margin="12,0,0,0" Target="{Binding ElementName=cmbMetric}"/>
+                            <ComboBox Grid.Row="0" Grid.Column="5" x:Name="cmbMetric" IsEditable="True" Width="80"
+                                      ToolTip="Route metric (0-9999). Windows adds the interface metric; the lowest effective metric wins among routes with the same prefix length."/>
+
+                            <Label Grid.Row="1" Grid.Column="0" Content="Interface:" Margin="0,4,0,0" Target="{Binding ElementName=cmbInterface}"/>
+                            <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,4,0,0">
+                                <Button DockPanel.Dock="Right" x:Name="btnRefreshInterfaces" Style="{DynamicResource RefreshButtonStyle}"
+                                        ToolTip="Refresh the interface list (e.g. after plugging in a USB adapter or connecting a VPN)"/>
+                                <ComboBox x:Name="cmbInterface" DisplayMemberPath="DisplayName"/>
+                            </DockPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="12,4,0,0">
+                                <RadioButton x:Name="rbPersistent" Content="Persistent" GroupName="Store" VerticalAlignment="Center"
+                                             Margin="0,4,10,4" ToolTip="The route is saved and survives a restart"/>
+                                <RadioButton x:Name="rbTemporary" Content="Temporary" GroupName="Store" VerticalAlignment="Center" Margin="0,4,0,4"
+                                             ToolTip="The route is lost at the next restart"/>
+                            </StackPanel>
+
+                            <Label Grid.Row="2" Grid.Column="0" x:Name="lblCommand" Content="Command:" Margin="0,6,0,0" VerticalAlignment="Top"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" x:Name="txtCommand" Margin="0,6,0,0"
+                                     ToolTip="What 'Add route' runs – or 'Apply changes', when a route from the table is loaded"
+                                     IsReadOnly="True" FontFamily="Consolas" FontSize="12" Height="52"
+                                     TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+                            <StackPanel Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="2" Margin="12,6,0,0">
+                                <ComboBox x:Name="cmbSyntax" ToolTip="Command syntax for the preview and 'Copy as command'"/>
+                                <Button x:Name="btnCopyEditorCommand" Content="Copy" Margin="0,4,0,0" ToolTip="Copy the commands to the clipboard"/>
+                            </StackPanel>
+
+                            <DockPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="6" Margin="0,6,0,0">
+                                <Button x:Name="btnNew" Content="New" ToolTip="Clear the form to enter a new route"/>
+                                <Button x:Name="btnAdd" Content="Add route" FontWeight="SemiBold"/>
+                                <Button x:Name="btnApply" Content="Apply changes" IsEnabled="False"
+                                        ToolTip="Change the route loaded into the form (select it in the table)"/>
+                                <TextBlock x:Name="txtEditorHint" VerticalAlignment="Center" TextWrapping="Wrap" Margin="6,0,0,0"
+                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                            </DockPanel>
+                        </Grid>
+                    </Expander>
+                </Grid>
+            </TabItem>
+
+            <!-- Interfaces -->
+            <TabItem Header="Interface metrics">
+                <DockPanel Margin="6">
+                    <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6"
+                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                               Text="Windows adds the interface metric to the metric of every route on that interface. With routes of the same prefix length (e.g. two default routes), the interface with the lower metric wins – e.g. LAN over WLAN. The automatic metric depends on the link speed."/>
+                    <GroupBox DockPanel.Dock="Bottom" x:Name="grpInterfaceMetric" Header="Interface metric" Margin="0,8,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Label Content="Metric:" Target="{Binding ElementName=cmbIfMetric}"/>
+                                <ComboBox x:Name="cmbIfMetric" IsEditable="True" Width="80" Margin="0,0,6,0"
+                                          ToolTip="Fixed interface metric (1-9999); lower is preferred"/>
+                                <Button x:Name="btnSetMetric" Content="Set metric" IsEnabled="False"/>
+                                <Button x:Name="btnAutoMetric" Content="Use automatic metric" IsEnabled="False"/>
+                            </StackPanel>
+                            <DockPanel Margin="0,6,0,0">
+                                <Button DockPanel.Dock="Right" x:Name="btnCopyIfCommand" Content="Copy" Margin="6,0,0,0"
+                                        ToolTip="Copy the commands to the clipboard"/>
+                                <TextBox x:Name="txtIfCommand" IsReadOnly="True" FontFamily="Consolas" FontSize="12" Height="42"
+                                         TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"/>
+                            </DockPanel>
+                        </StackPanel>
+                    </GroupBox>
+                    <DataGrid x:Name="dgInterfaces" SelectionMode="Single" MinHeight="80">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Interface"       Binding="{Binding InterfaceAlias}"  Width="190"/>
+                            <DataGridTextColumn Header="Index"           Binding="{Binding InterfaceIndex}"  Width="50"/>
+                            <DataGridTextColumn Header="State"           Binding="{Binding ConnectionState}" Width="90"/>
+                            <DataGridTextColumn Header="Metric"          Binding="{Binding InterfaceMetric}" Width="55"/>
+                            <DataGridTextColumn Header="Mode"            Binding="{Binding MetricMode}"      Width="75"/>
+                            <DataGridTextColumn Header="Addresses"       Binding="{Binding Addresses}"       Width="200"/>
+                            <DataGridTextColumn Header="Default gateway" Binding="{Binding DefaultGateway}"  Width="120"/>
+                            <DataGridTextColumn Header="DHCP"            Binding="{Binding Dhcp}"            Width="65"/>
+                            <DataGridTextColumn Header="Description"     Binding="{Binding Description}"     Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Snapshots -->
+            <TabItem Header="Snapshots">
+                <Grid Margin="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0">
+                        <Label DockPanel.Dock="Left" Content="Name:" Target="{Binding ElementName=txtSnapshotName}"/>
+                        <Button DockPanel.Dock="Right" x:Name="btnTakeSnapshot" Content="Take snapshot" Margin="6,0,0,0"
+                                ToolTip="Save the current IPv4 and IPv6 route tables, e.g. before connecting a VPN"/>
+                        <TextBox x:Name="txtSnapshotName" ToolTip="Optional, e.g. 'before VPN'"/>
+                    </DockPanel>
+
+                    <DataGrid Grid.Row="1" x:Name="dgSnapshots" Height="130" Margin="0,6,0,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name"     Binding="{Binding Name}"         Width="*"/>
+                            <DataGridTextColumn Header="Time"     Binding="{Binding Time}"         Width="140"/>
+                            <DataGridTextColumn Header="Computer" Binding="{Binding ComputerName}" Width="130"/>
+                            <DataGridTextColumn Header="IPv4"     Binding="{Binding IPv4Count}"    Width="50"/>
+                            <DataGridTextColumn Header="IPv6"     Binding="{Binding IPv6Count}"    Width="50"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <WrapPanel Grid.Row="2" Margin="0,6,0,0">
+                        <Button x:Name="btnCompareCurrent" Content="Compare with current" IsEnabled="False"
+                                ToolTip="Show what changed between the selected snapshot and the current route table"/>
+                        <Button x:Name="btnCompareTwo" Content="Compare the two selected" IsEnabled="False"
+                                ToolTip="Select two snapshots (Ctrl+click); the older one is the reference"/>
+                        <Button x:Name="btnDeleteSnapshot" Content="Delete" IsEnabled="False"/>
+                        <CheckBox x:Name="chkDiffSystem" Content="Include system routes" Margin="12,4,16,4"/>
+                    </WrapPanel>
+
+                    <TextBlock Grid.Row="3" x:Name="txtDiffSummary" Margin="0,8,0,4" TextWrapping="Wrap"
+                               Text="Take a snapshot, change something (connect a VPN, plug in an adapter), then compare."/>
+
+                    <DataGrid Grid.Row="4" x:Name="dgDiff" MinHeight="80">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Change}" Value="Added">
+                                        <Setter Property="Background" Value="{DynamicResource DiffAddedBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Change}" Value="Removed">
+                                        <Setter Property="Background" Value="{DynamicResource DiffRemovedBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Change}" Value="Changed">
+                                        <Setter Property="Background" Value="{DynamicResource DiffChangedBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Change"      Binding="{Binding Change}"            Width="70"/>
+                            <DataGridTextColumn Header="Family"      Binding="{Binding AddressFamily}"     Width="55"/>
+                            <DataGridTextColumn Header="Destination" Binding="{Binding DestinationPrefix}" Width="170"/>
+                            <DataGridTextColumn Header="Gateway"     Binding="{Binding NextHop}"           Width="130"/>
+                            <DataGridTextColumn Header="Interface"   Binding="{Binding InterfaceAlias}"    Width="170"/>
+                            <DataGridTextColumn Header="Before"      Binding="{Binding Before}"            Width="150"/>
+                            <DataGridTextColumn Header="After"       Binding="{Binding After}"             Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <WrapPanel Grid.Row="5" Margin="0,6,0,0">
+                        <Button x:Name="btnCopyDiff" Content="Copy" ToolTip="Copy the selected differences (or all) as tab-separated text"/>
+                    </WrapPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <TextBlock Grid.Row="3" x:Name="txtStatus" Margin="0,6,0,0" Text="Ready." TextWrapping="Wrap"/>
+
+        <!-- Log -->
+        <Expander Grid.Row="4" x:Name="expLog" Header="Log" Margin="0,6,0,0">
+            <TextBox x:Name="txtLog" Style="{DynamicResource LogBoxStyle}" Height="110" Margin="0,4,0,0"/>
+        </Expander>
+    </Grid>
+</UserControl>
