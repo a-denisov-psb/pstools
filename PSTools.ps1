@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $AppRoot = $PSScriptRoot
-$AppVersion = '0.3.0'
+$AppVersion = '0.4.0'
 
 . (Join-Path $AppRoot 'Core\Core.ps1')
 . (Join-Path $AppRoot 'Core\Gui.ps1')
