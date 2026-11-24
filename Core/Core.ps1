@@ -8,7 +8,7 @@
 # Root folder of the toolbox (parent of Core). Used to locate Data/ and Tools/.
 $PSToolsRoot = Split-Path -Parent $PSScriptRoot
 
-foreach ($__coreFile in 'Common.ps1', 'Network.ps1', 'Oui.ps1', 'Storage.ps1') {
+foreach ($__coreFile in 'Common.ps1', 'Network.ps1', 'Routing.ps1', 'Oui.ps1', 'Storage.ps1') {
     . (Join-Path $PSScriptRoot $__coreFile)
 }
 Remove-Variable -Name __coreFile -ErrorAction SilentlyContinue

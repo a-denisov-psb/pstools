@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $AppRoot = $PSScriptRoot
-$AppVersion = '0.3.0'
+$AppVersion = '0.4.0'
 
 . (Join-Path $AppRoot 'Core\Core.ps1')
 . (Join-Path $AppRoot 'Core\Gui.ps1')
@@ -98,6 +98,10 @@ $MainXaml = @'
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="Margin" Value="0,0,0,8"/>
         </Style>
+        <!-- Row backgrounds for comparisons (added / removed / changed) -->
+        <SolidColorBrush x:Key="DiffAddedBrush" Color="#FFE3F4E6"/>
+        <SolidColorBrush x:Key="DiffRemovedBrush" Color="#FFFBE4E2"/>
+        <SolidColorBrush x:Key="DiffChangedBrush" Color="#FFFFF4CE"/>
         <Style x:Key="LogBoxStyle" TargetType="TextBox">
             <Setter Property="IsReadOnly" Value="True"/>
             <Setter Property="FontFamily" Value="Consolas"/>
