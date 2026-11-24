@@ -86,6 +86,37 @@ Test-PortConnection -ComputerName server01 -Port 3389
 Test-PortConnection dc01 -Port 53 -Protocol TCP, UDP | Format-Table
 ```
 
+#### Route Table
+
+Shows the IPv4 or IPv6 route table and changes it. Switch between the two families with one click.
+
+- Lists each route with destination, gateway, interface, and route metric plus interface metric (=
+  effective metric). It also shows the origin (System, DHCP, Router advertisement, Static) and the store
+  (Persistent, Temporary, Automatic).
+- Lists persistent routes on disconnected or removed interfaces too. They appear grayed out.
+- Hides system routes (multicast, broadcast, loopback, own addresses) unless you choose to show them.
+  A text filter narrows the list further.
+- **Add, edit and delete routes** (admin), persistent or until the next restart. The form previews the
+  exact commands in PowerShell or `netsh` syntax, ready to copy.
+  - An edit adds the new route before it removes the old one, so connections stay up. If a step fails,
+    the steps before it are rolled back.
+- **Route lookup**: shows which route, interface and source address Windows uses for an IP address or
+  host name.
+- **Notices** for a missing IPv4 default route, several default routes (which one wins, or a tie),
+  gateways outside the interface's subnets, and persistent routes on interfaces that no longer exist.
+- **Interface metrics**: shows the metric of each interface and sets it to a fixed value or back to
+  automatic (admin). This decides, for example, whether LAN or WLAN is preferred.
+- **Snapshots**: saves the route table and compares it later, e.g. before and after connecting a VPN.
+  Added, removed and changed routes are highlighted.
+- **Backup / restore** of persistent routes as a JSON file, also to another PC. A restored route keeps its
+  interface if one with the same name exists; otherwise it goes to the interface that reaches its gateway.
+
+```powershell
+. .\Tools\Network\Get-RouteTable\Get-RouteTable.ps1
+Get-RouteTable -AddressFamily IPv4 | Format-Table DestinationPrefix, NextHopDisplay, InterfaceAlias, EffectiveMetric, Origin, Store
+Find-PSToolsRoute -Destination 8.8.8.8
+```
+
 ## Using the tools from the console
 
 Each tool is one PowerShell function in `Tools\<Category>\<Tool>\<Tool>.ps1`. Dot-source the file, then
@@ -125,7 +156,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Data\Update-OuiTable.p
 PSTools/
 ├── Start-PSTools.cmd          # launcher (Bypass, STA, hidden console)
 ├── PSTools.ps1                # main window: discovers and hosts tools
-├── Core/                      # shared helpers (network, OUI lookup, storage, GUI)
+├── Core/                      # shared helpers (network, routing, OUI lookup, storage, GUI)
 ├── Data/                      # shipped data files and their update scripts
 ├── UserData/                  # created at runtime, not in git
 └── Tools/
